@@ -2,6 +2,7 @@ from pathlib import Path
 from datetime import datetime, timedelta, timezone
 import json
 import subprocess
+from collections import OrderedDict
 
 import torch
 import torch.nn as nn
@@ -88,6 +89,8 @@ class Trainer:
     def train(self):
         print("Training started.", flush=True)
         self.model.to(self.device)
+        self.model = torch.compile(self.model)
+        torch.set_float32_matmul_precision("high")
         self.model.train()
         n_iter = 0
         for epoch in range(self.n_epochs):
@@ -123,8 +126,13 @@ class Trainer:
         return loss
 
     def _save_checkpoint(self):
+        state_dict = self.model.state_dict()
+        correct_state_dict = OrderedDict()
+        for key, value in state_dict.items():
+            key = key.replace("_orig_mod.", "")
+            correct_state_dict[key] = value
         state_dict = {
-            "model": self.model.state_dict(),
+            "model": correct_state_dict,
             "optimizer": self.optimizer.state_dict(),
             "scheduler": self.scheduler.state_dict(),
             "config": self.config,

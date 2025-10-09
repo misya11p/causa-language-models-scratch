@@ -13,6 +13,7 @@ def get_dataloader(batch_size, tokenizer):
         ds,
         batch_size=batch_size,
         shuffle=True,
+        pin_memory=True,
         collate_fn=collater,
     )
     return train_loader
