@@ -85,6 +85,7 @@ class Trainer:
 
         self.epoch = 0
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.config = config
 
     def train(self):
         print("Training started.", flush=True)
