@@ -6,9 +6,8 @@ from collections import OrderedDict
 
 import torch
 import torch.nn as nn
-import torch.optim as optim
-from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils import tensorboard
+from schedulefree import RAdamScheduleFree
 from tqdm import tqdm
 
 from utils import get_tokenizer, get_dataloader
@@ -63,11 +62,8 @@ class Trainer:
         self.dpath_ckpt.mkdir(parents=True, exist_ok=True)
 
         self.criterion = nn.CrossEntropyLoss()
-        self.optimizer = optim.AdamW(
+        self.optimizer = RAdamScheduleFree(
             self.model.parameters(), lr=self.learning_rate
-        )
-        self.scheduler = CosineAnnealingLR(
-            self.optimizer, T_max=len(self.dataloader) * self.n_epochs
         )
         dpath_logs = self.dpath_ckpt / DNAME_LOGS
         dpath_logs.mkdir(parents=True, exist_ok=True)
@@ -111,7 +107,6 @@ class Trainer:
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
-                self.scheduler.step()
                 self.writer.add_scalar("loss", loss.item(), n_iter)
                 n_iter += 1
             self._save_checkpoint()
