@@ -66,7 +66,9 @@ class Trainer:
 
         self.criterion = nn.CrossEntropyLoss()
         self.optimizer = RAdamScheduleFree(
-            self.model.parameters(), lr=config.train.lr
+            self.model.parameters(),
+            lr=config.train.lr,
+            betas=config.train.betas,
         )
 
         self.max_len = config.model.max_len
