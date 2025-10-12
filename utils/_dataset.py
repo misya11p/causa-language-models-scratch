@@ -36,7 +36,8 @@ def format_text(ds):
         for paragraph in paragraphs:
             paragraph = paragraph.replace("_NEWLINE_", "")
             paragraph = paragraph.replace("\n", "")
+            paragraph = paragraph.strip()
             if paragraph:
-                sentences.append(paragraph.strip())
+                sentences.append(paragraph)
     ds_new = Dataset.from_dict({"text": sentences})
     return ds_new
