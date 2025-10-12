@@ -4,12 +4,13 @@ from datasets import load_dataset
 import typer
 
 from utils import format_text, get_tokenizer, train_tokenizer
+from utils import (
+    DNAME_TEXTS,
+    DNAME_TOKENS,
+    FNAME_PARQUET_TRAIN,
+    FNAME_PARQUET_VALID,
+)
 
-
-DNAME_TEXTS = "texts"
-DNAME_TOKENS = "tokens"
-FNAME_PARQUET_TRAIN = "train.parquet"
-FNAME_PARQUET_VALID = "validation.parquet"
 
 CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
 app = typer.Typer(add_completion=False, context_settings=CONTEXT_SETTINGS)
