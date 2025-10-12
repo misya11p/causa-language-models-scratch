@@ -123,14 +123,19 @@ class Trainer:
                 leave=False
             )
             for i, batch in enumerate(pbar, 1):
+                input_ids, labels = self._unpack_batch(batch)
+
                 is_update = (i % self.grad_accum_steps == 0)
                 if is_update:
-                    context = contextlib.nullcontext()
+                    context_nosync = contextlib.nullcontext()
                 else:
-                    context = model.no_sync()
+                    context_nosync = model.no_sync()
+                context_autocast = torch.autocast(
+                    device_type=torch.device(self.device_id).type,
+                    dtype=torch.bfloat16,
+                )
 
-                input_ids, labels = self._unpack_batch(batch)
-                with context:
+                with context_nosync, context_autocast:
                     pred = model(input_ids)
                     loss = self._loss_fn(pred, labels)
                 loss = loss / self.grad_accum_steps
