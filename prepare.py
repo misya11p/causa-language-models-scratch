@@ -22,12 +22,8 @@ def main():
             fpath_tokenizer=FPATH_TOKENIZER,
             vocab_size=16000,
         )
+
     tokenizer = get_tokenizer()
-    tokenizer.add_special_tokens({
-        "bos_token": "<s>",
-        "eos_token": "</s>",
-        "pad_token": "<pad>",
-    })
     ds = ds.map(
         lambda x: tokenizer(x["text"]),
         batched=True,
