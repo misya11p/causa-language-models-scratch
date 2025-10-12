@@ -19,7 +19,7 @@ FNAME_PARQUET_VALID = "validation.parquet"
 def get_dataloader(
     batch_size,
     dpath_data="data/",
-    fpath_tokenizer="tokenizer.json"
+    tokenizer="tokenizer.json"
 ):
     dpath_data = Path(dpath_data)
     dpath_tokens = dpath_data / DNAME_TOKENS
@@ -27,7 +27,8 @@ def get_dataloader(
     ds_train = load_dataset(str(dpath_tokens), split="train")
     ds_valid = load_dataset(str(dpath_tokens), split="validation")
 
-    tokenizer = get_tokenizer(fpath_tokenizer)
+    if isinstance(tokenizer, str):
+        tokenizer = get_tokenizer(tokenizer)
     collater = DataCollatorForLanguageModeling(
         tokenizer=tokenizer,
         mlm=False,

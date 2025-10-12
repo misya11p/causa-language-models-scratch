@@ -1,90 +1,88 @@
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
-import json
-import subprocess
 from collections import OrderedDict
 
 import torch
 import torch.nn as nn
-from torch.utils import tensorboard
 from schedulefree import RAdamScheduleFree
 from tqdm import tqdm
+import typer
 
-from utils import get_tokenizer, get_dataloader
+from utils import load_config, get_tokenizer, get_dataloader
 
 
 JST = timezone(timedelta(hours=9))
-FPATH_LATEST = "checkpoints/latest.pth"
-DNAME_LOGS = "logs"
-FPATH_CONFIG = "config.json"
-with open(FPATH_CONFIG, "r") as f:
-    config = json.load(f)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DPATH_CHECKPOINTS = "checkpoints"
+FNAME_LATEST = "latest.pth"
+
+CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
+app = typer.Typer(add_completion=False, context_settings=CONTEXT_SETTINGS)
 
 
-def main():
-    trainer = Trainer(config)
+@app.command()
+def main(
+    fpath_config: str = typer.Option(
+        "config.toml",
+        "-c", "--config",
+        help="File path to the config file (.toml)",
+    ),
+    dpath_data: str = typer.Option(
+        "data/",
+        "-d", "--data",
+        help="Directory path to the dataset",
+    ),
+):
+    """Train a language model."""
+
+    config = load_config(fpath_config)
+    dpath_data = Path(dpath_data)
+    trainer = Trainer(config, dpath_data)
     trainer.train()
 
 
 class Trainer:
-    def __init__(self, config):
-        model = config["model"]
-        model_config = config["model_config"]
-        train_config = config["train_config"]
+    def __init__(self, config, dpath_data):
+        self.tokenizer = get_tokenizer(config.model.tokenizer)
 
-        self.tokenizer = get_tokenizer()
-        model_config["vocab_size"] = self.tokenizer.vocab_size
+        config.model.hparams["max_len"] = config.model.max_len
+        config.model.hparams["vocab_size"] = self.tokenizer.vocab_size
+        self.config = config.asdict()
 
-        if model == "vanilla":
-            from models import VanillaTransformer
-            self.model = VanillaTransformer(**model_config)
-            print("Model: Vanilla Transformer", flush=True)
-        else:
-            raise ValueError(f"Model {model} not recognized")
+        match config.model.arch:
+            case "vanilla":
+                from models import VanillaTransformer
+                self.model = VanillaTransformer(**config.model.hparams)
+                print("Model: Vanilla Transformer", flush=True)
+            case _:
+                raise ValueError(f"Model {config.model.arch} not recognized")
 
         n_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
         print(f"Number of parameters: {n_params:,}", flush=True)
 
-        self.max_len = model_config["max_len"]
-        self.n_epochs = train_config["n_epochs"]
-        self.learning_rate = train_config["learning_rate"]
-        self.batch_size = train_config["batch_size"]
-
         self.dataloader = get_dataloader(
-            batch_size=self.batch_size,
-            tokenizer=self.tokenizer
+            batch_size=config.train.batch_size,
+            dpath_data=dpath_data,
+            tokenizer=self.tokenizer,
         )
 
+        dpath_ckpt_root = Path(DPATH_CHECKPOINTS)
+        dpath_ckpt_root.mkdir(parents=True, exist_ok=True)
         now = datetime.now(JST).strftime("%Y%m%d_%H%M%S")
-        dpath_ckpt = f"checkpoints/{now}/"
+        dpath_ckpt = dpath_ckpt_root / now
         self.dpath_ckpt = Path(dpath_ckpt)
         self.dpath_ckpt.mkdir(parents=True, exist_ok=True)
+        self.fpath_latest = dpath_ckpt_root / FNAME_LATEST
 
         self.criterion = nn.CrossEntropyLoss()
         self.optimizer = RAdamScheduleFree(
-            self.model.parameters(), lr=self.learning_rate
+            self.model.parameters(), lr=config.train.lr
         )
-        dpath_logs = self.dpath_ckpt / DNAME_LOGS
-        dpath_logs.mkdir(parents=True, exist_ok=True)
-        self.writer = tensorboard.SummaryWriter(log_dir=str(dpath_logs))
         print(f"Checkpoints will be saved to {self.dpath_ckpt}", flush=True)
 
-        subprocess.Popen(
-            [
-                "tensorboard",
-                "--logdir", str(dpath_logs),
-                "--host", "0.0.0.0",
-                "--port", "6006"
-            ],
-            stderr=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-        )
-        print("TensorBoard started.", flush=True)
-
-        self.epoch = 0
+        self.max_len = config.model.max_len
+        self.n_epochs = config.train.n_epochs
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.config = config
+        self.epoch = 0
 
     def train(self):
         print("Training started.", flush=True)
@@ -92,7 +90,7 @@ class Trainer:
         self.model = torch.compile(self.model)
         torch.set_float32_matmul_precision("high")
         self.model.train()
-        n_iter = 0
+
         for epoch in range(self.n_epochs):
             self.epoch = epoch + 1
             pbar = tqdm(
@@ -103,12 +101,10 @@ class Trainer:
             for batch in pbar:
                 input_ids, labels = self._unpack_batch(batch)
                 pred = self.model(input_ids)
-                loss = self._calc_loss(pred, labels)
+                loss = self._loss_fn(pred, labels)
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
-                self.writer.add_scalar("loss", loss.item(), n_iter)
-                n_iter += 1
             self._save_checkpoint()
 
     def _unpack_batch(self, batch):
@@ -118,7 +114,7 @@ class Trainer:
         labels = labels[:, 1:self.max_len].contiguous()
         return input_ids, labels
 
-    def _calc_loss(self, pred, labels):
+    def _loss_fn(self, pred, labels):
         pred = pred.view(-1, pred.size(-1))
         labels = labels.view(-1)
         loss = self.criterion(pred, labels)
@@ -137,7 +133,7 @@ class Trainer:
             "config": self.config,
         }
         torch.save(state_dict, self.dpath_ckpt / f"epoch{self.epoch}.pth")
-        torch.save(state_dict, FPATH_LATEST)
+        torch.save(state_dict, self.fpath_latest)
 
 if __name__ == "__main__":
     main()
