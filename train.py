@@ -70,6 +70,7 @@ class Trainer:
             lr=config.train.lr,
             betas=config.train.betas,
         )
+        self.scaler = torch.amp.GradScaler()
 
         self.max_len = config.model.max_len
         self.n_epochs = config.train.n_epochs
@@ -145,11 +146,16 @@ class Trainer:
                 with context_nosync, context_autocast:
                     pred = model(input_ids)
                     loss = self._loss_fn(pred, labels)
-                loss = loss / self.grad_accum_steps
+                loss = self.scaler(loss / self.grad_accum_steps)
                 loss.backward()
 
                 if is_update_step:
-                    self.optimizer.step()
+                    self.scaler.unscale_(self.optimizer)
+                    torch.nn.utils.clip_grad_norm_(
+                        model.parameters(), self.max_grad_norm
+                    )
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
                     self.optimizer.zero_grad()
             self._save_checkpoint()
 
