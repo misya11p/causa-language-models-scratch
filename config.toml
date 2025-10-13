@@ -20,5 +20,5 @@ max_grad_norm = 1.0
 
 [train.wandb]
 log_interval = 100
-entity = ""
 project = "deep-learning-scratch"
+name = ""
