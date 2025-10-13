@@ -38,6 +38,7 @@ def get_dataloader(
     )
 
     if world_size >= 2 and rank is not None:
+        batch_size = batch_size // world_size
         train_sampler = DistributedSampler(
             ds_train,
             num_replicas=world_size,

@@ -161,6 +161,7 @@ class Trainer:
             print("Training started.", flush=True)
         model = self.model # alias
         model.train()
+        self.optimizer.train()
 
         for epoch in range(self.n_epochs):
             self.epoch = epoch + 1
