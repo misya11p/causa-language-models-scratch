@@ -45,8 +45,16 @@ def get_dataloader(
             shuffle=True,
             drop_last=True,
         )
+        valid_sampler = DistributedSampler(
+            ds_valid,
+            num_replicas=world_size,
+            rank=rank,
+            shuffle=False,
+            drop_last=False,
+        )
     else:
         train_sampler = None
+        valid_sampler = None
 
     train_loader = DataLoader(
         ds_train,
@@ -54,16 +62,16 @@ def get_dataloader(
         sampler=train_sampler,
         shuffle=(train_sampler is None),
         pin_memory=True,
-        num_workers=4,
         drop_last=True,
         collate_fn=collater,
     )
     valid_loader = DataLoader(
         ds_valid,
         batch_size=batch_size,
+        sampler=valid_sampler,
         shuffle=False,
         pin_memory=True,
-        num_workers=2,
+        drop_last=False,
         collate_fn=collater,
     )
     return train_loader, valid_loader
