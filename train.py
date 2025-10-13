@@ -17,7 +17,6 @@ from utils import load_config, get_tokenizer, get_dataloader
 
 
 JST = timezone(timedelta(hours=9))
-DPATH_CHECKPOINTS = "checkpoints"
 FNAME_LATEST = "latest.pth"
 
 CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
@@ -36,17 +35,23 @@ def main(
         "-d", "--data",
         help="Directory path to the dataset",
     ),
+    dpath_ckpt: str = typer.Option(
+        "checkpoints/",
+        "-k", "--checkpoints",
+        help="Directory path to save checkpoints",
+    ),
 ):
     """Train a language model."""
 
     config = load_config(fpath_config)
     dpath_data = Path(dpath_data)
-    trainer = Trainer(config, dpath_data)
+    dpath_ckpt = Path(dpath_ckpt)
+    trainer = Trainer(config, dpath_data, dpath_ckpt)
     trainer.train()
 
 
 class Trainer:
-    def __init__(self, config, dpath_data):
+    def __init__(self, config, dpath_data, dpath_ckpt):
         self.tokenizer = get_tokenizer(config.model.tokenizer)
 
         config.model.hparams["max_len"] = config.model.max_len
@@ -89,7 +94,7 @@ class Trainer:
             rank=self.rank_global,
         )
         self.n_iter_per_epoch = len(self.train_loader)
-        self._setup_checkpoint()
+        self._setup_checkpoint(dpath_ckpt)
 
     def _is_dist(self):
         rank = os.environ["RANK"]
@@ -116,8 +121,7 @@ class Trainer:
             self.device = torch.accelerator.current_accelerator()
             self.model = self.model.to(self.device)
 
-    def _setup_checkpoint(self):
-        dpath_ckpt_root = Path(DPATH_CHECKPOINTS)
+    def _setup_checkpoint(self, dpath_ckpt_root):
         dpath_ckpt_root.mkdir(parents=True, exist_ok=True)
         now = datetime.now(JST).strftime("%Y%m%d_%H%M%S")
         dpath_ckpt = dpath_ckpt_root / now
