@@ -78,11 +78,15 @@ class Trainer:
         self.n_epochs = config.train.n_epochs
         self.grad_accum_steps = config.train.grad_accum_steps
         self.max_grad_norm = config.train.max_grad_norm
+        self.log_interval_iter = config.train.log_interval * self.grad_accum_steps
         self.epoch = 0
+        self.global_step = 0
 
+        self.is_dist = self._is_dist()
         self._setup_device()
-        self.model = torch.compile(self.model)
+        self.is_master = self.global_rank == 0
 
+        self.model = torch.compile(self.model)
         self.train_loader, self.valid_loader = get_dataloader(
             batch_size=config.train.batch_size,
             dpath_data=dpath_data,
@@ -104,19 +108,19 @@ class Trainer:
             print("Number of devices:", self.world_size)
             print(f"Checkpoints will be saved to {self.dpath_ckpt}")
 
-            if config.train.wandb.log_interval > 0:
-                import wandb
-                name = (
-                    config.train.wandb.name
-                    or f"[{arch}] {self.start_time.strftime('%m/%d %H:%M')}"
-                )
-                self.wandb_run = wandb.init(
-                    project=config.train.wandb.project,
-                    name=name,
-                    config=self.config,
-                )
+            import wandb
+            name = (
+                config.train.wandb.name
+                or f"[{arch}] {self.start_time.strftime('%m/%d %H:%M')}"
+            )
+            self.wandb_run = wandb.init(
+                project=config.train.wandb.project,
+                name=name,
+                config=self.config,
+            )
 
-    def _is_dist(self):
+    @staticmethod
+    def _is_dist():
         return (
             dist.is_available()
             and torch.cuda.is_available()
@@ -125,7 +129,7 @@ class Trainer:
         )
 
     def _setup_device(self):
-        if self._is_dist():
+        if self.is_dist:
             torch.accelerator.set_device_index(rank)
             acc = torch.accelerator.current_accelerator()
             backend = torch.distributed.get_default_backend_for_device(acc)
@@ -141,8 +145,6 @@ class Trainer:
             self.global_rank = 1
             self.device = torch.accelerator.current_accelerator()
             self.model = self.model.to(self.device)
-
-        self.is_master = self.global_rank == 0
 
     def _setup_checkpoint(self, dpath_ckpt_root):
         dpath_ckpt_root.mkdir(parents=True, exist_ok=True)
@@ -161,12 +163,15 @@ class Trainer:
         for epoch in range(self.n_epochs):
             self.epoch = epoch + 1
             for i, batch in enumerate(self.train_loader, 1):
+                self.global_step += 1
                 input_ids, labels = self._unpack_batch(batch)
 
                 is_update_step = (
                     i % self.grad_accum_steps == 0
                     or i == self.n_iter_per_epoch
                 )
+                is_logging_step = i % self.log_interval_iter == 0
+
                 if is_update_step:
                     context_nosync = contextlib.nullcontext()
                 else:
@@ -191,6 +196,16 @@ class Trainer:
                     self.scaler.step(self.optimizer)
                     self.scaler.update()
                     self.optimizer.zero_grad()
+
+                if is_logging_step:
+                    if self.is_dist:
+                        loss = dist.all_reduce(loss) / self.world_size
+                    ppl = torch.exp(loss).item()
+                    if self.is_master:
+                        self.wandb_run.log(
+                            {"train/perplexity": ppl},
+                            step=self.global_step,
+                        )
 
             self._save_checkpoint()
 
