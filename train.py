@@ -78,7 +78,8 @@ class Trainer:
         self.n_epochs = config.train.n_epochs
         self.grad_accum_steps = config.train.grad_accum_steps
         self.max_grad_norm = config.train.max_grad_norm
-        self.log_interval_iter = config.train.log_interval * self.grad_accum_steps
+        self.log_interval = config.train.log_interval * self.grad_accum_steps
+        self.eval_interval = config.train.eval_interval * self.grad_accum_steps
         self.epoch = 0
         self.global_step = 0
 
@@ -164,13 +165,12 @@ class Trainer:
             self.epoch = epoch + 1
             for i, batch in enumerate(self.train_loader, 1):
                 self.global_step += 1
-                input_ids, labels = self._unpack_batch(batch)
+                is_last = i == self.n_iter_per_epoch
+                is_update_step = i % self.grad_accum_steps == 0 or is_last
+                is_logging_step = i % self.log_interval == 0 or is_last
+                is_evaluating_step = i % self.eval_interval == 0 or is_last
 
-                is_update_step = (
-                    i % self.grad_accum_steps == 0
-                    or i == self.n_iter_per_epoch
-                )
-                is_logging_step = i % self.log_interval_iter == 0
+                input_ids, labels = self._unpack_batch(batch)
 
                 if is_update_step:
                     context_nosync = contextlib.nullcontext()
@@ -198,12 +198,19 @@ class Trainer:
                     self.optimizer.zero_grad()
 
                 if is_logging_step:
-                    if self.is_dist:
-                        loss = dist.all_reduce(loss) / self.world_size
+                    loss = self._gather(loss.detach())
                     ppl = torch.exp(loss).item()
                     if self.is_master:
                         self.wandb_run.log(
                             {"train/perplexity": ppl},
+                            step=self.global_step,
+                        )
+
+                if is_evaluating_step:
+                    ppl = self._evaluate()
+                    if self.is_master:
+                        self.wandb_run.log(
+                            {"valid/perplexity": ppl},
                             step=self.global_step,
                         )
 
@@ -221,6 +228,26 @@ class Trainer:
         labels = labels.view(-1)
         loss = self.criterion(pred, labels)
         return loss
+
+    def _gather(self, tensor):
+        if self.is_dist:
+            tensor = dist.all_gather(tensor) / self.world_size
+        return tensor
+
+    def _evaluate(self):
+        self.model.eval()
+        total_loss = torch.tensor(0., device=self.device)
+        with torch.no_grad():
+            for batch in self.valid_loader:
+                input_ids, labels = self._unpack_batch(batch)
+                pred = self.model(input_ids)
+                loss = self._loss_fn(pred, labels)
+                total_loss += loss
+        total_loss = self._gather(total_loss)
+        avg_loss = total_loss / len(self.valid_loader)
+        ppl = torch.exp(avg_loss).item()
+        self.model.train()
+        return ppl
 
     def _save_checkpoint(self):
         state_dict = self.model.state_dict()
