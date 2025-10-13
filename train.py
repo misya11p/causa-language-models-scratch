@@ -98,6 +98,17 @@ class Trainer:
             print("Number of devices:", self.world_size)
             print(f"Checkpoints will be saved to {self.dpath_ckpt}")
 
+            if config.train.wandb.log_interval > 0:
+                import wandb
+                name = (
+                    config.train.wandb.name
+                    or f"[{arch}] {self.start_time.strftime('%m/%d %H:%M')}"
+                )
+                self.wandb_run = wandb.init(
+                    project=config.train.wandb.project,
+                    name=name,
+                    config=self.config,
+                )
 
     def _is_dist(self):
         rank = os.environ["RANK"]
