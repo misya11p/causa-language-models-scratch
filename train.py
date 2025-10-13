@@ -131,19 +131,19 @@ class Trainer:
 
     def _setup_device(self):
         if self.is_dist:
+            rank = int(os.environ["LOCAL_RANK"])
+            self.global_rank = int(os.environ["RANK"])
             torch.accelerator.set_device_index(rank)
             acc = torch.accelerator.current_accelerator()
             backend = torch.distributed.get_default_backend_for_device(acc)
             dist.init_process_group(backend)
             self.world_size = dist.get_world_size()
-            self.global_rank = dist.get_global_rank()
-            rank = dist.get_rank()
             self.device = torch.device(rank)
             self.model = self.model.to(self.device)
             self.model = DDP(self.model, device_ids=[rank])
         else:
             self.world_size = 1
-            self.global_rank = 1
+            self.global_rank = 0
             self.device = torch.accelerator.current_accelerator()
             self.model = self.model.to(self.device)
 
