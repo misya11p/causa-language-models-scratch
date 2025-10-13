@@ -19,7 +19,5 @@ grad_accum_steps = 4
 max_grad_norm = 1.0
 log_interval = 50
 eval_interval = 1000
-
-[train.wandb]
-name = ""
-project = "deep-learning-scratch"
+wandb_name = ""
+wandb_project = "deep-learning-scratch"
