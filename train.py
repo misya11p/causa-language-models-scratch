@@ -60,7 +60,7 @@ class Trainer:
 
         arch = config.model.arch
         match arch:
-            case "vanilla":
+            case "vanilla_transformer":
                 from models import VanillaTransformer
                 self.model = VanillaTransformer(**config.model.hparams)
             case _:
@@ -111,11 +111,11 @@ class Trainer:
 
             # import wandb
             # name = (
-            #     config.train.wandb.name
+            #     config.train.wandb_name
             #     or f"[{arch}] {self.start_time.strftime('%m/%d %H:%M')}"
             # )
             # self.wandb_run = wandb.init(
-            #     project=config.train.wandb.project,
+            #     project=config.train.wandb_project,
             #     name=name,
             #     config=self.config,
             # )
