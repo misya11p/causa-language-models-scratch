@@ -11,6 +11,7 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from schedulefree import RAdamScheduleFree
 import typer
+from tqdm import tqdm
 
 from utils import load_config, get_tokenizer, get_dataloader
 
@@ -163,7 +164,15 @@ class Trainer:
 
         for epoch in range(self.n_epochs):
             self.epoch = epoch + 1
-            for i, batch in enumerate(self.train_loader, 1):
+            pbar = enumerate(
+                tqdm(
+                    self.train_loader,
+                    desc=f"Epoch {self.epoch}/{self.n_epochs}",
+                    disable=not self.is_master,
+                ),
+                start=1,
+            )
+            for i, batch in pbar:
                 self.global_step += 1
                 is_last = i == self.n_iter_per_epoch
                 is_update_step = i % self.grad_accum_steps == 0 or is_last
@@ -185,7 +194,7 @@ class Trainer:
                 with context_nosync, context_autocast:
                     pred = model(input_ids)
                     loss = self._loss_fn(pred, labels)
-                loss = self.scaler(loss / self.grad_accum_steps)
+                loss = self.scaler.scale(loss / self.grad_accum_steps)
                 loss.backward()
 
                 if is_update_step:
@@ -222,8 +231,8 @@ class Trainer:
     def _unpack_batch(self, batch):
         input_ids = batch["input_ids"].to(self.device)
         labels = batch["labels"].to(self.device)
-        input_ids = input_ids[:, :self.max_len - 1].contiguous()
-        labels = labels[:, 1:self.max_len].contiguous()
+        input_ids = input_ids[:, :-1][:, :self.max_len].contiguous()
+        labels = labels[:, 1:][:, :self.max_len].contiguous()
         return input_ids, labels
 
     def _loss_fn(self, pred, labels):
