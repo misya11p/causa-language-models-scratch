@@ -17,13 +17,13 @@ class VanillaTransformerLayer(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
-        z1 = self.mha(x)
-        z1 = self.dropout(z1)
-        z1 = self.norm1(z1 + x)
-        z2 = self.ffn(z1)
-        z2 = self.dropout(z2)
-        z2 = self.norm2(z2 + z1)
-        return z2
+        res = x
+        x = self.dropout(self.mha(x))
+        x = self.norm1(x + res)
+        res = x
+        x = self.dropout(self.ffn(x))
+        x = self.norm2(x + res)
+        return x
 
 
 class VanillaTransformer(nn.Module):
