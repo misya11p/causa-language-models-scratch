@@ -1,4 +1,4 @@
-# Deep Learning Scratch
+# DL Models Scratch
 
 深層学習モデルをスクラッチ実装していく。
 
