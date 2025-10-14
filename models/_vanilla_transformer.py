@@ -1,8 +1,10 @@
 import torch.nn as nn
 
-from .layers import SinusoidalPositionalEncoding
-from .layers import MultiHeadAttention
-from .layers import FeedForwardNetwork
+from .layers import (
+    SinusoidalPositionalEncoding,
+    MultiHeadAttention,
+    FeedForwardNetwork,
+)
 
 
 class TransformerLayer(nn.Module):
