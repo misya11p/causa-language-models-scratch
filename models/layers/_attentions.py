@@ -22,23 +22,23 @@ class Attention(nn.Module):
 
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, d_model, n_heads, bias=True):
+    def __init__(self, d_model, n_heads):
         super().__init__()
-        self.n_heads = n_heads
         assert not d_model % n_heads, "d_model must be divisible by n_heads"
-        self.w_q = nn.Linear(d_model, d_model, bias=bias)
-        self.w_k = nn.Linear(d_model, d_model, bias=bias)
-        self.w_v = nn.Linear(d_model, d_model, bias=bias)
+        self.n_heads = n_heads
+        self.w_q = nn.Linear(d_model, d_model)
+        self.w_k = nn.Linear(d_model, d_model)
+        self.w_v = nn.Linear(d_model, d_model)
         self.attention = Attention()
-        self.w_o = nn.Linear(d_model, d_model, bias=bias)
+        self.w_o = nn.Linear(d_model, d_model)
 
     def forward(self, x):
-        q = self.w_q(x)
-        k = self.w_k(x)
-        v = self.w_v(x)
-        queries = torch.stack(q.chunk(self.n_heads, -1), 0)
-        keys = torch.stack(k.chunk(self.n_heads, -1), 0)
-        values = torch.stack(v.chunk(self.n_heads, -1), 0)
-        heads = self.attention(queries, keys, values).unbind(0)
-        out = self.w_o(torch.cat(heads, -1))
+        h = self.n_heads
+        b, l, dm = x.shape
+        dk = dm // h
+        q = self.w_q(x).view(b, l, h, dk).permute(0, 2, 1, 3)
+        k = self.w_k(x).view(b, l, h, dk).permute(0, 2, 1, 3)
+        v = self.w_v(x).view(b, l, h, dk).permute(0, 2, 1, 3)
+        heads = self.attention(q, k, v).permute(0, 2, 1, 3)
+        out = self.w_o(heads.reshape(b, l, dm))
         return out
