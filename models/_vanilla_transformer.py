@@ -11,7 +11,7 @@ class VanillaTransformerLayer(nn.Module):
     def __init__(self, d_model, n_heads, d_ff, dropout):
         super().__init__()
         self.mha = MultiHeadAttention(d_model, n_heads)
-        self.ffn = FeedForwardNetwork(d_model, d_ff)
+        self.ffn = FeedForwardNetwork(d_model, d_ff, activation=nn.ReLU())
         self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
         self.dropout = nn.Dropout(dropout)
