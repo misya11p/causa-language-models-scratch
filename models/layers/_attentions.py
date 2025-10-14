@@ -3,16 +3,16 @@ import torch.nn as nn
 
 
 class Attention(nn.Module):
-    def __init__(self, d):
+    def __init__(self):
         super().__init__()
         self.softmax = nn.Softmax(-1)
-        self.scale = d ** 0.5
 
     def forward(self, q, k, v):
+        scale = q.size(-1) ** 0.5
         scores = q @ k.mT
         causal_mask = self._get_causal_mask(q.shape[-2]).to(q.device)
         scores = scores.masked_fill(causal_mask, -torch.inf)
-        weights = self.softmax(scores / self.scale)
+        weights = self.softmax(scores / scale)
         out = weights @ v
         return out
 
@@ -26,11 +26,10 @@ class MultiHeadAttention(nn.Module):
         super().__init__()
         self.n_heads = n_heads
         assert not d_model % n_heads, "d_model must be divisible by n_heads"
-        d_k = d_model // n_heads
         self.w_q = nn.Linear(d_model, d_model, bias=bias)
         self.w_k = nn.Linear(d_model, d_model, bias=bias)
         self.w_v = nn.Linear(d_model, d_model, bias=bias)
-        self.attention = Attention(d_k)
+        self.attention = Attention()
         self.w_o = nn.Linear(d_model, d_model, bias=bias)
 
     def forward(self, x):
