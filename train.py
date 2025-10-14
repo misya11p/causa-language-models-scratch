@@ -194,7 +194,10 @@ class Trainer:
                 self.global_step += 1
                 is_last = i == self.n_iter_per_epoch
                 is_update_step = i % self.grad_accum_steps == 0 or is_last
-                is_logging_step = i % self.log_interval == 0 or is_last
+                is_logging_step = (
+                    (self.global_step >= self.eval_interval)
+                    and (i % self.log_interval == 0 or is_last)
+                )
                 is_evaluating_step = i % self.eval_interval == 0 or is_last
 
                 input_ids, labels = self._unpack_batch(batch)
