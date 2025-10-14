@@ -15,3 +15,12 @@ class SinusoidalPositionalEncoding(nn.Module):
 
     def forward(self, x):
         return x + self.pe[:x.size(-2)]
+
+
+class LearnablePositionalEncoding(nn.Module):
+    def __init__(self, d_model, max_len):
+        super().__init__()
+        self.pe = nn.Parameter(torch.randn((max_len, d_model)))
+
+    def forward(self, x):
+        return x + self.pe[:x.size(-2)]
