@@ -27,7 +27,16 @@ class TransformerLayer(nn.Module):
 
 
 class VanillaTransformer(nn.Module):
-    def __init__(self, vocab_size, max_len, n_layers, d_model, n_heads, d_ff, dropout):
+    def __init__(
+        self,
+        vocab_size,
+        max_len,
+        n_layers=6,
+        d_model=512,
+        n_heads=8,
+        d_ff=2048,
+        dropout=0.1,
+    ):
         super().__init__()
         self.embedding = nn.Embedding(vocab_size, d_model)
         self.pe = SinusoidalPositionalEmbedding(d_model, max_len)
