@@ -243,6 +243,10 @@ class Trainer:
             if self.is_master:
                 self._save_checkpoint()
 
+        if self.is_master:
+            print("Training finished.", flush=True)
+            self.wandb_run.finish()
+
     def _unpack_batch(self, batch):
         input_ids = batch["input_ids"].to(self.device)
         labels = batch["labels"].to(self.device)
