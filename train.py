@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from schedulefree import RAdamScheduleFree
+import wandb
 import typer
 from tqdm import tqdm
 
@@ -82,7 +83,7 @@ class Trainer:
         self.log_interval = config.train.log_interval * self.grad_accum_steps
         self.eval_interval = config.train.eval_interval * self.grad_accum_steps
         self.epoch = 0
-        self.global_step = 0
+        self.total_tokens = 0
 
         self.is_dist = self._is_dist()
         self._setup_device()
@@ -107,19 +108,26 @@ class Trainer:
                 if p.requires_grad
             )
             print(f"Number of parameters: {n_params:,}")
-            print("Number of devices:", self.world_size)
+            print(f"Number of devices: {self.world_size}")
             print(f"Checkpoints will be saved to {self.dpath_ckpt}")
 
-            # import wandb
-            # name = (
-            #     config.train.wandb_name
-            #     or f"[{arch}] {self.start_time.strftime('%m/%d %H:%M')}"
-            # )
-            # self.wandb_run = wandb.init(
-            #     project=config.train.wandb_project,
-            #     name=name,
-            #     config=self.config,
-            # )
+            name = (
+                config.train.wandb_name
+                or f"[{arch}] {self.start_time.strftime('%m/%d %H:%M')}"
+            )
+            self.wandb_run = wandb.init(
+                project=config.train.wandb_project,
+                name=name,
+                config=self.config,
+            )
+            self.wandb_run.define_metric(
+                "train/perplexity",
+                step_metric="total_tokens"
+            )
+            self.wandb_run.define_metric(
+                "valid/perplexity",
+                step_metric="total_tokens"
+            )
 
     @staticmethod
     def _is_dist():
@@ -174,13 +182,13 @@ class Trainer:
                 start=1,
             )
             for i, batch in pbar:
-                self.global_step += 1
                 is_last = i == self.n_iter_per_epoch
                 is_update_step = i % self.grad_accum_steps == 0 or is_last
                 is_logging_step = i % self.log_interval == 0 or is_last
                 is_evaluating_step = i % self.eval_interval == 0 or is_last
 
                 input_ids, labels = self._unpack_batch(batch)
+                self.total_tokens += (labels != -100).sum().item()
 
                 if is_update_step:
                     context_nosync = contextlib.nullcontext()
@@ -211,20 +219,24 @@ class Trainer:
                     loss = self._gather(loss.detach())
                     ppl = torch.exp(loss).item()
                     if self.is_master:
-                        print(f"Perplexity {ppl:.2f}", flush=True)
-                        # self.wandb_run.log(
-                        #     {"train/perplexity": ppl},
-                        #     step=self.global_step,
-                        # )
+                        self.wandb_run.log(
+                            {
+                                "train/perplexity": ppl,
+                                "total_tokens": self.total_tokens,
+                            },
+                            step=self.total_tokens,
+                        )
 
                 if is_evaluating_step:
                     ppl = self._evaluate()
                     if self.is_master:
-                        # self.wandb_run.log(
-                        #     {"valid/perplexity": ppl},
-                        #     step=self.global_step,
-                        # )
-                        print(f"Validation Perplexity {ppl:.2f}")
+                        self.wandb_run.log(
+                            {
+                                "valid/perplexity": ppl,
+                                "total_tokens": self.total_tokens,
+                            },
+                            step=self.total_tokens,
+                        )
 
             if self.is_master:
                 self._save_checkpoint()
@@ -249,6 +261,7 @@ class Trainer:
 
     def _evaluate(self):
         self.model.eval()
+        self.optimizer.eval()
         total_loss = torch.tensor(0., device=self.device)
         with torch.no_grad():
             for batch in self.valid_loader:
@@ -260,6 +273,7 @@ class Trainer:
         avg_loss = total_loss / len(self.valid_loader)
         ppl = torch.exp(avg_loss).item()
         self.model.train()
+        self.optimizer.train()
         return ppl
 
     def _save_checkpoint(self):
