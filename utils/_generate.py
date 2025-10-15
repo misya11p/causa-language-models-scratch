@@ -3,9 +3,9 @@ from ._tokenizer import get_tokenizer
 
 
 class Generator:
-    def __init__(self, model):
+    def __init__(self, model, fpath_tokenizer="tokenizer.json"):
         self.model = model
-        self.tokenizer = get_tokenizer()
+        self.tokenizer = get_tokenizer(fpath_tokenizer)
         self.device = next(model.parameters()).device
 
     @torch.no_grad()
