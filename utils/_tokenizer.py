@@ -11,7 +11,12 @@ def get_tokenizer(fpath_tokenizer="tokenizer.json"):
     return tokenizer
 
 
-def train_tokenizer(text, fpath_tokenizer="tokenizer.json", vocab_size=16000):
+def train_tokenizer(
+    text,
+    fpath_tokenizer="tokenizer.json",
+    vocab_size=16000,
+    max_rows=None,
+):
     from tokenizers import Tokenizer
     from tokenizers.models import Unigram
     from tokenizers.normalizers import NFKC
@@ -29,6 +34,9 @@ def train_tokenizer(text, fpath_tokenizer="tokenizer.json", vocab_size=16000):
         unk_token="<unk>",
         special_tokens=["<pad>", "<s>", "</s>", "<unk>", "<mask>"]
     )
+
+    if max_rows is not None:
+        text = text[:max_rows]
 
     print("Training tokenizer ... ", flush=True, end="")
     tokenizer.train_from_iterator(text, trainer=trainer)
