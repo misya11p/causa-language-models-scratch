@@ -75,8 +75,6 @@ class Trainer:
         self.n_epochs = config.train.n_epochs
         self.grad_accum_steps = config.train.grad_accum_steps
         self.max_grad_norm = config.train.max_grad_norm
-        self.log_interval = config.train.log_interval
-        self.eval_interval = config.train.eval_interval
         self.epoch = 0
         self.global_step = 0
         self.total_tokens = 0
@@ -98,6 +96,8 @@ class Trainer:
             rank=self.global_rank,
         )
         self.n_iter_per_epoch = len(self.train_loader)
+        self.log_interval = self.n_iter_per_epoch // config.train.log_freq + 1
+        self.eval_interval = self.n_iter_per_epoch // config.train.eval_freq + 1
         self._setup_checkpoint(dpath_ckpt)
 
         if self.is_master:

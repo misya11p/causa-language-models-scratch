@@ -24,8 +24,8 @@ class TrainConfig(BaseConfig):
     betas: list[float]
     grad_accum_steps: int
     max_grad_norm: float
-    log_interval: int
-    eval_interval: int
+    log_freq: int
+    eval_freq: int
     wandb_name: str
     wandb_project: str
 
