@@ -15,6 +15,7 @@ import typer
 from tqdm import tqdm
 
 from utils import load_config, get_tokenizer, get_dataloader
+from models import get_model
 
 
 JST = timezone(timedelta(hours=9))
@@ -61,16 +62,7 @@ class Trainer:
         self.config = config.asdict()
 
         arch = config.model.arch
-        match arch:
-            case "vanilla_transformer":
-                from models import VanillaTransformer
-                self.model = VanillaTransformer(**config.model.hparams)
-            case "gpt2":
-                from models import GPT2
-                self.model = GPT2(**config.model.hparams)
-            case _:
-                raise ValueError(f"Model {arch} not recognized")
-
+        self.model = get_model(arch, config.model.hparams)
         self.criterion = nn.CrossEntropyLoss()
         self.optimizer = RAdamScheduleFree(
             self.model.parameters(),
@@ -109,7 +101,7 @@ class Trainer:
         self._setup_checkpoint(dpath_ckpt)
 
         if self.is_master:
-            print(f"Model: {config.model.arch}")
+            print(f"Model: {arch}")
             n_params = sum(
                 p.numel()
                 for p in self.model.parameters()
