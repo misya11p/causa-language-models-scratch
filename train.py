@@ -65,6 +65,9 @@ class Trainer:
             case "vanilla_transformer":
                 from models import VanillaTransformer
                 self.model = VanillaTransformer(**config.model.hparams)
+            case "gpt2":
+                from models import GPT2
+                self.model = GPT2(**config.model.hparams)
             case _:
                 raise ValueError(f"Model {arch} not recognized")
 
@@ -191,7 +194,10 @@ class Trainer:
                 self.global_step += 1
                 is_last = i == self.n_iter_per_epoch
                 is_update_step = i % self.grad_accum_steps == 0 or is_last
-                is_logging_step = i % self.log_interval == 0 or is_last
+                is_logging_step = (
+                    (self.global_step >= self.eval_interval)
+                    and (i % self.log_interval == 0 or is_last)
+                )
                 is_evaluating_step = i % self.eval_interval == 0 or is_last
 
                 input_ids, labels = self._unpack_batch(batch)
