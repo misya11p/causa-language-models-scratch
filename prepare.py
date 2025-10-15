@@ -3,8 +3,10 @@ from pathlib import Path
 from datasets import load_dataset
 import typer
 
-from utils import get_tokenizer, train_tokenizer
+from utils import get_tokenizer, train_tokenizer, format_text
 from utils import (
+    DNAME_TEXTS,
+    DNAME_TOKENS,
     FNAME_PARQUET_TRAIN,
     FNAME_PARQUET_VALID,
 )
@@ -37,7 +39,7 @@ def main(
         help="Directory path to cache the downloaded dataset"
     ),
     max_rows: int = typer.Option(
-        1_000_000,
+        None,
         "--max-rows",
         help="Maximum number of rows to use for training the tokenizer"
     ),
@@ -46,13 +48,49 @@ def main(
 
     fpath_tokenizer = Path(fpath_tokenizer)
     dpath_data = Path(dpath_data)
-    dpath_data.mkdir(parents=True, exist_ok=True)
+    dpath_texts = dpath_data / DNAME_TEXTS
+    dpath_tokens = dpath_data / DNAME_TOKENS
 
-    dss = load_dataset("fujiki/wiki40b_ja", cache_dir=dpath_cache)
-    ds_train = dss["train"]
-    ds_valid = dss["test"]
+    skip_download = False
+    if dpath_texts.exists():
+        files = list(dpath_texts.glob("*.parquet"))
+        names = [f.name for f in files]
+        if ("train.parquet" in names) and ("validation.parquet" in names):
+            skip_download = True
+    else:
+        dpath_texts.mkdir(parents=True)
 
-    if not fpath_tokenizer.exists():
+    skip_train = False
+    if fpath_tokenizer.exists():
+        skip_train = True
+
+    skip_tokenize = False
+    if dpath_tokens.exists():
+        files = list(dpath_tokens.glob("*.parquet"))
+        names = [f.name for f in files]
+        if ("train.parquet" in names) and ("validation.parquet" in names):
+            skip_tokenize = True
+    else:
+        dpath_tokens.mkdir(parents=True)
+
+    if not skip_download:
+        ds_train, ds_valid = load_dataset(
+            "wiki40b", "ja",
+            split=["train", "validation"],
+            cache_dir=str(dpath_cache)
+        )
+        ds_train = format_text(ds_train)
+        ds_valid = format_text(ds_valid)
+        ds_train.to_parquet(dpath_texts / FNAME_PARQUET_TRAIN)
+        ds_valid.to_parquet(dpath_texts / FNAME_PARQUET_VALID)
+        print("Saved formatted texts.", flush=True)
+    else:
+        dss = load_dataset(str(dpath_texts))
+        ds_train = dss["train"]
+        ds_valid = dss["validation"]
+        print("Loaded formatted texts.", flush=True)
+
+    if not skip_train:
         train_tokenizer(
             text=ds_train["text"],
             fpath_tokenizer=fpath_tokenizer,
@@ -60,20 +98,21 @@ def main(
             max_rows=max_rows,
         )
 
-    tokenizer = get_tokenizer()
-    ds_train = ds_train.map(
-        lambda x: tokenizer(x["text"]),
-        batched=True,
-        remove_columns=["text"]
-    )
-    ds_valid = ds_valid.map(
-        lambda x: tokenizer(x["text"]),
-        batched=True,
-        remove_columns=["text"]
-    )
-    ds_train.to_parquet(dpath_data / FNAME_PARQUET_TRAIN)
-    ds_valid.to_parquet(dpath_data / FNAME_PARQUET_VALID)
-    print("Saved tokenized dataset.", flush=True)
+    if not (skip_train and skip_tokenize):
+        tokenizer = get_tokenizer()
+        ds_train = ds_train.map(
+            lambda x: tokenizer(x["text"]),
+            batched=True,
+            remove_columns=["text"]
+        )
+        ds_valid = ds_valid.map(
+            lambda x: tokenizer(x["text"]),
+            batched=True,
+            remove_columns=["text"]
+        )
+        ds_train.to_parquet(dpath_tokens / FNAME_PARQUET_TRAIN)
+        ds_valid.to_parquet(dpath_tokens / FNAME_PARQUET_VALID)
+        print("Saved tokenized dataset.", flush=True)
 
 
 if __name__ == "__main__":
