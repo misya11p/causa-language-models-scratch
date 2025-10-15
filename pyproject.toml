@@ -1,5 +1,5 @@
 [project]
-name = "deep-learning-scratch"
+name = "transformers-scratch"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -14,5 +14,4 @@ dependencies = [
     "transformers>=4.57.0",
     "typer>=0.19.2",
     "wandb>=0.22.2",
-    "zstandard>=0.25.0",
 ]

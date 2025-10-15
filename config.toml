@@ -20,4 +20,4 @@ max_grad_norm = 1.0
 log_freq = 100
 eval_freq = 4
 wandb_name = ""
-wandb_project = "deep-learning-scratch"
+wandb_project = "transformers-scratch"
