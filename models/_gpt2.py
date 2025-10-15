@@ -31,10 +31,10 @@ class GPT2(nn.Module):
         self,
         vocab_size,
         max_len,
-        n_layers=48,
-        d_model=1600,
-        n_heads=25,
-        d_ff=6400,
+        n_layers=12,
+        d_model=768,
+        n_heads=12,
+        d_ff=3072,
         dropout=0.1,
     ):
         super().__init__()
