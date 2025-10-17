@@ -300,5 +300,6 @@ class Trainer:
         shutil.copy(fpath_state_dict, self.fpath_latest)
         self.optimizer.train()
 
+
 if __name__ == "__main__":
     app()
