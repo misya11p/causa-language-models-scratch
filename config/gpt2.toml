@@ -1,0 +1,23 @@
+[model]
+arch = "gpt2"
+tokenizer = "tokenizer.json"
+max_len = 1024
+
+[model.hparams]
+n_layers = 12
+d_model = 768
+n_heads = 12
+d_ff = 3072
+dropout = 0.1
+
+[train]
+n_epochs = 10
+batch_size = 256
+lr = 3e-4
+betas = [0.9, 0.98]
+grad_accum_steps = 4
+max_grad_norm = 1.0
+log_freq = 100
+eval_freq = 4
+wandb_name = ""
+wandb_project = "transformers-scratch"
