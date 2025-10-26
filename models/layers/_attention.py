@@ -22,15 +22,15 @@ class Attention(nn.Module):
 
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, d_model, n_heads, bias=True):
+    def __init__(self, d_model, n_heads):
         super().__init__()
         assert not d_model % n_heads, "d_model must be divisible by n_heads"
         self.n_heads = n_heads
-        self.w_q = nn.Linear(d_model, d_model, bias=bias)
-        self.w_k = nn.Linear(d_model, d_model, bias=bias)
-        self.w_v = nn.Linear(d_model, d_model, bias=bias)
+        self.w_q = nn.Linear(d_model, d_model)
+        self.w_k = nn.Linear(d_model, d_model)
+        self.w_v = nn.Linear(d_model, d_model)
         self.attention = Attention()
-        self.w_o = nn.Linear(d_model, d_model, bias=bias)
+        self.w_o = nn.Linear(d_model, d_model)
 
     def forward(self, x):
         q = self.w_q(x)
