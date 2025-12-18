@@ -32,11 +32,6 @@ def main(
         "-c", "--config",
         help="File path to the config file (.toml)",
     ),
-    dpath_data: str = typer.Option(
-        "data/",
-        "-d", "--data",
-        help="Directory path to the dataset",
-    ),
     dpath_ckpt: str = typer.Option(
         "checkpoints/",
         "-k", "--checkpoints",
@@ -46,14 +41,13 @@ def main(
     """Train a language model."""
 
     config = load_config(fpath_config)
-    dpath_data = Path(dpath_data)
     dpath_ckpt = Path(dpath_ckpt)
-    trainer = Trainer(config, dpath_data, dpath_ckpt)
+    trainer = Trainer(config, dpath_ckpt)
     trainer.train()
 
 
 class Trainer:
-    def __init__(self, config, dpath_data, dpath_ckpt):
+    def __init__(self, config, dpath_ckpt):
         self.start_time = datetime.now(JST)
         self.tokenizer = get_tokenizer(config.model.tokenizer)
 
@@ -90,7 +84,7 @@ class Trainer:
         self.model = torch.compile(self.model)
         self.train_loader, self.valid_loader = get_dataloader(
             batch_size=config.train.batch_size,
-            dpath_data=dpath_data,
+            max_length=self.max_len,
             tokenizer=self.tokenizer,
             world_size=self.world_size,
             rank=self.global_rank,
@@ -246,10 +240,8 @@ class Trainer:
             self.wandb_run.finish()
 
     def _unpack_batch(self, batch):
-        input_ids = batch["input_ids"].to(self.device)
-        labels = batch["labels"].to(self.device)
-        input_ids = input_ids[:, :-1][:, :self.max_len].contiguous()
-        labels = labels[:, 1:][:, :self.max_len].contiguous()
+        input_ids = batch[:, :-1].contiguous().to(self.device)
+        labels = batch[:, 1:].contiguous().to(self.device)
         return input_ids, labels
 
     def _loss_fn(self, pred, labels):
