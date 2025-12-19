@@ -16,7 +16,7 @@ class TextDataset(IterableDataset):
 def get_dataloader(
     batch_size,
     max_length=1024,
-    tokenizer="tokenizer.json",
+    tokenizer="trained/tokenizer.json",
     world_size=1,
     rank=None,
 ):
