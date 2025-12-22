@@ -6,14 +6,13 @@ import contextlib
 
 import torch
 import torch.nn as nn
-import torch.optim as optim
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from transformers import get_cosine_schedule_with_warmup
 import wandb
 import typer
 
-from utils import load_config, get_tokenizer, get_dataloader
+from utils import load_config, get_tokenizer, get_dataloader, get_optimizer
 from models import get_model
 
 
@@ -30,15 +29,13 @@ def main(
         help="File path to the config file (.toml)",
     ),
     dpath_ckpt: str = typer.Option(
-        "checkpoints/",
+        None,
         "-k", "--checkpoints",
         help="Directory path to save checkpoints",
     ),
 ):
     """Train a language model."""
-
     config = load_config(fpath_config)
-    dpath_ckpt = Path(dpath_ckpt)
     trainer = Trainer(config, dpath_ckpt)
     trainer.train()
 
@@ -52,25 +49,24 @@ class Trainer:
         config.model.hparams["vocab_size"] = self.tokenizer.vocab_size
         self.config = config.asdict()
 
-        arch = config.model.arch
-        self.model = get_model(arch, config.model.hparams)
+        self.model = get_model(config.model.arch, config.model.hparams)
+        self.n_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
         self.criterion = nn.CrossEntropyLoss()
-        self.optimizer = optim.AdamW(self.model.parameters())
+        self.optimizer = get_optimizer(self.model)
         self.scheduler = get_cosine_schedule_with_warmup(
             self.optimizer,
             num_warmup_steps=int(0.1 * config.train.total_steps),
             num_training_steps=config.train.total_steps,
         )
         self.scaler = torch.amp.GradScaler()
-
         self.now_tokens = 0
         self.now_steps = 0
         self.total_steps = config.train.total_steps
+        self._setup_checkpoint(dpath_ckpt)
 
         self.max_len = config.model.max_len
         self.grad_accum_steps = config.train.grad_accum_steps
         self.max_grad_norm = config.train.max_grad_norm
-
         self.is_dist = self._is_dist()
         self._setup_device()
         self.is_master = self.global_rank == 0
@@ -89,23 +85,24 @@ class Trainer:
         )
         self.log_interval = config.train.log_interval
         self.eval_interval = config.train.eval_interval
-        self._setup_checkpoint(dpath_ckpt)
 
         if self.is_master:
-            print(f"Model: {arch}")
-            n_params = sum(
-                p.numel()
-                for p in self.model.parameters()
-                if p.requires_grad
-            )
-            print(f"Number of parameters: {n_params:,}")
+            print(f"Model: {config.model.arch}")
+            print(f"Number of parameters: {self.n_params:,}")
             print(f"Number of devices: {self.world_size}")
-            print(f"Checkpoints will be saved to {self.dpath_ckpt}")
+            if self.resume:
+                print(f"Resumed from checkpoint at {self.dpath_ckpt}")
+            else:
+                print(f"Checkpoints will be saved to {self.dpath_ckpt}")
 
-            name = (
-                config.train.wandb_name
-                or f"[{arch}] {self.start_time.strftime('%m/%d %H:%M')}"
-            )
+            if config.train.wandb_name:
+                name = config.train.wandb_name
+            else:
+                name = (
+                    f"[{config.model.arch} {self.n_params // 1_000_000}M] "
+                    f"{self.start_time.strftime('%y%m/%d %H:%M')}"
+                )
+
             self.wandb_run = wandb.init(
                 project=config.train.wandb_project,
                 name=name,
@@ -148,12 +145,29 @@ class Trainer:
             self.device = torch.accelerator.current_accelerator()
             self.model = self.model.to(self.device)
 
-    def _setup_checkpoint(self, dpath_ckpt_root):
-        dpath_ckpt_root.mkdir(parents=True, exist_ok=True)
-        datestr = self.start_time.strftime("%Y%m%d_%H%M%S")
-        dpath_ckpt = dpath_ckpt_root / datestr
-        self.dpath_ckpt = Path(dpath_ckpt)
-        self.dpath_ckpt.mkdir(parents=True, exist_ok=True)
+    def _setup_checkpoint(self, dpath_ckpt):
+        if dpath_ckpt is None:
+            datestr = self.start_time.strftime("%Y%m%d_%H%M%S")
+            dpath_ckpt = Path("checkpoints") / datestr
+            dpath_ckpt.mkdir(parents=True, exist_ok=True)
+            self.resume = False
+        else:
+            dpath_ckpt = Path(dpath_ckpt)
+            assert dpath_ckpt.exists(), f"The checkpoint directory {dpath_ckpt} does not exist."
+
+            ckpt_files = sorted(dpath_ckpt.glob("*.pth"))
+            assert len(ckpt_files) > 0, f"No checkpoint files found in {dpath_ckpt} to resume."
+
+            latest_ckpt = ckpt_files[-1]
+            state_dict = torch.load(latest_ckpt, map_location="cpu")
+            self.model.load_state_dict(state_dict["model"])
+            self.optimizer.load_state_dict(state_dict["optimizer"])
+            self.scheduler.load_state_dict(state_dict["scheduler"])
+            self.scaler.load_state_dict(state_dict["scaler"])
+            self.now_steps = state_dict["now_steps"]
+            self.now_tokens = state_dict["now_tokens"]
+            self.resume = True
+        self.dpath_ckpt = dpath_ckpt
 
     def train(self):
         if self.is_master:
