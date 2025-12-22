@@ -32,7 +32,7 @@ Transformer系モデルをスクラッチ実装し、理解を深める。
 
 ```
 uv sync
-uv run python prepare.py
+uv run python train_tokenizer.py
 ```
 
 ### 学習
